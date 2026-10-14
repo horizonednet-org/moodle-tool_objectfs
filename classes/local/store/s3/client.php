@@ -695,13 +695,12 @@ class client extends object_client_base {
 
             if (!empty($originalfilename)) {
                 $result['Content-Disposition'] = $contentdisposition;
-                // The filename parameter must be in ISO-8859-1, however it works in browsers if
-                // you treat the original UTF-8 string as ISO-8859-1 characters. To achieve that
-                // here, we encode the UTF-8 as if it were ISO-8859-1. This behaviour is hideous
-                // so it would be nice to use the optional filename* field (RFC 5987) but S3 still
-                // complains if we do that.
-                $jankyfilename = \core_text::convert($originalfilename, 'ISO-8859-1');
-                $result['filename'] = 'filename="' . $jankyfilename . '"';
+                // Provide an ASCII fallback filename alongside RFC 5987 UTF-8 filename* so
+                // S3-compatible object stores (such as Google Cloud Storage) and modern browsers
+                // preserve Unicode filenames without ISO-8859-1 double-encoding corruption.
+                $asciifilename = preg_replace('/[^\x20-\x7E]/', '_', $originalfilename);
+                $asciifilename = str_replace(['"', '\\', '+'], '_', $asciifilename);
+                $result['filename'] = 'filename="' . $asciifilename . '"; filename*=UTF-8\'\'' . rawurlencode($originalfilename);
                 $result['Content-Type'] = $originalcontenttype;
             }
         }

@@ -81,6 +81,10 @@ class manager {
         $config->s3_base_url = '';
         $config->key_prefix = '';
 
+        // Google Cloud Storage (keyless) file system.
+        $config->gcs_bucket = '';
+        $config->gcs_key_prefix = '';
+
         // Digital ocean file system.
         $config->do_key = '';
         $config->do_secret = '';
@@ -320,6 +324,7 @@ class manager {
 
         $filesystems['\tool_objectfs\azure_file_system'] = '\tool_objectfs\azure_file_system [DEPRECATED]';
         $filesystems['\tool_objectfs\digitalocean_file_system'] = '\tool_objectfs\digitalocean_file_system';
+        $filesystems['\tool_objectfs\gcs_file_system'] = '\tool_objectfs\gcs_file_system';
         $filesystems['\tool_objectfs\s3_file_system'] = '\tool_objectfs\s3_file_system';
         $filesystems['\tool_objectfs\swift_file_system'] = '\tool_objectfs\swift_file_system';
         $filesystems['\tool_objectfs\azure_blob_storage_file_system'] = '\tool_objectfs\azure_blob_storage_file_system';

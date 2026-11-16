@@ -84,6 +84,7 @@ class manager {
         // Google Cloud Storage (keyless) file system.
         $config->gcs_bucket = '';
         $config->gcs_key_prefix = '';
+        $config->gcs_nopresign_countries = '';
 
         // Digital ocean file system.
         $config->do_key = '';

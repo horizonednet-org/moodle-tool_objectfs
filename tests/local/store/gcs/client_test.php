@@ -77,4 +77,79 @@ final class client_test extends \advanced_testcase {
             $legacy->get_fullpath_from_hash($hash)
         );
     }
+
+    /**
+     * Tests gcs_nopresign_countries normalizes, trims, and deduplicates ISO country codes.
+     *
+     * @covers \tool_objectfs\local\store\gcs\client
+     */
+    public function test_gcs_nopresign_countries_parsing(): void {
+        $empty = new client((object)['gcs_bucket' => 'hen-test-bucket']);
+        $this->assertSame([], $empty->get_nopresign_countries());
+
+        $parsed = new client((object)[
+            'gcs_bucket' => 'hen-test-bucket',
+            'gcs_nopresign_countries' => ' cn, ir ; CN  sy ',
+        ]);
+        $this->assertSame(['CN', 'IR', 'SY'], $parsed->get_nopresign_countries());
+    }
+
+    /**
+     * Tests Cloudflare HTTP_CF_IPCOUNTRY bypasses pre-signed URL redirects only for configured countries.
+     *
+     * @covers \tool_objectfs\local\store\gcs\file_system
+     */
+    public function test_gcs_country_presigned_url_bypass(): void {
+        global $CFG;
+        $this->resetAfterTest();
+
+        set_config('filesystem', '\tool_objectfs\gcs_file_system', 'tool_objectfs');
+        set_config('gcs_bucket', 'hen-test-bucket', 'tool_objectfs');
+        set_config('enablepresignedurls', 1, 'tool_objectfs');
+        set_config('presignedminfilesize', 0, 'tool_objectfs');
+        set_config('signingwhitelist', '*', 'tool_objectfs');
+        set_config('gcs_nopresign_countries', 'cn, ir', 'tool_objectfs');
+        $CFG->alternative_file_system_class = '\tool_objectfs\gcs_file_system';
+
+        $fs = new \tool_objectfs\gcs_file_system();
+        $hash = sha1('country-routing-test-object');
+        $mockfile = $this->createMock(\stored_file::class);
+
+        $hadheader = array_key_exists('HTTP_CF_IPCOUNTRY', $_SERVER);
+        $origheader = $_SERVER['HTTP_CF_IPCOUNTRY'] ?? null;
+
+        try {
+            // Philippines (PH) user in the same tenant continues receiving pre-signed URL redirects.
+            $_SERVER['HTTP_CF_IPCOUNTRY'] = 'PH';
+            $this->assertFalse($fs->should_bypass_presigned_for_country());
+            $this->assertTrue($fs->presigned_url_should_redirect($hash, []));
+
+            // US user continues receiving pre-signed URL redirects.
+            $_SERVER['HTTP_CF_IPCOUNTRY'] = 'US';
+            $this->assertFalse($fs->should_bypass_presigned_for_country());
+            $this->assertTrue($fs->presigned_url_should_redirect($hash, []));
+
+            // Mainland China (CN) user bypasses pre-signed URLs and streams via Moodle.
+            $_SERVER['HTTP_CF_IPCOUNTRY'] = 'CN';
+            $this->assertTrue($fs->should_bypass_presigned_for_country());
+            $this->assertFalse($fs->presigned_url_should_redirect($hash, []));
+            $this->assertFalse($fs->presigned_url_should_redirect_file($mockfile, []));
+
+            // Case-insensitive header matching works cleanly.
+            $_SERVER['HTTP_CF_IPCOUNTRY'] = ' ir ';
+            $this->assertTrue($fs->should_bypass_presigned_for_country());
+            $this->assertFalse($fs->presigned_url_should_redirect($hash, []));
+
+            // Missing header defaults to normal pre-signed URL behavior.
+            unset($_SERVER['HTTP_CF_IPCOUNTRY']);
+            $this->assertFalse($fs->should_bypass_presigned_for_country());
+            $this->assertTrue($fs->presigned_url_should_redirect($hash, []));
+        } finally {
+            if ($hadheader) {
+                $_SERVER['HTTP_CF_IPCOUNTRY'] = $origheader;
+            } else {
+                unset($_SERVER['HTTP_CF_IPCOUNTRY']);
+            }
+        }
+    }
 }

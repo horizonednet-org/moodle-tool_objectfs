@@ -82,6 +82,9 @@ class client extends object_client_base {
     /** @var string Normalized object key prefix (either '' or ending with '/'). */
     protected string $bucketkeyprefix = '';
 
+    /** @var string[] Uppercase ISO 3166-1 alpha-2 country codes excluded from pre-signed URLs. */
+    protected array $nopresigncountries = [];
+
     /**
      * Construct the GCS client.
      *
@@ -128,6 +131,20 @@ class client extends object_client_base {
         $this->expirationtime = $config->expirationtime ?? (2 * HOURSECS);
         $this->presignedminfilesize = $config->presignedminfilesize ?? 0;
         $this->enablepresignedurls = $config->enablepresignedurls ?? 0;
+
+        $parsedcountries = [];
+        if (!empty($config->gcs_nopresign_countries)) {
+            $codes = preg_split('/[\s,;]+/', strtoupper((string)$config->gcs_nopresign_countries));
+            if (is_array($codes)) {
+                foreach ($codes as $code) {
+                    $code = trim($code);
+                    if ($code !== '') {
+                        $parsedcountries[$code] = $code;
+                    }
+                }
+            }
+        }
+        $this->nopresigncountries = array_values($parsedcountries);
     }
 
     /**
@@ -145,7 +162,7 @@ class client extends object_client_base {
      * @return array
      */
     public function __sleep() {
-        return ['bucket', 'bucketkeyprefix'];
+        return ['bucket', 'bucketkeyprefix', 'nopresigncountries'];
     }
 
     /**
@@ -205,6 +222,15 @@ class client extends object_client_base {
      */
     public function get_key_prefix(): string {
         return $this->bucketkeyprefix;
+    }
+
+    /**
+     * Get uppercase ISO country codes configured to bypass pre-signed URLs.
+     *
+     * @return string[]
+     */
+    public function get_nopresign_countries(): array {
+        return $this->nopresigncountries;
     }
 
     /**
@@ -1257,6 +1283,13 @@ class client extends object_client_base {
             'tool_objectfs/gcs_key_prefix',
             new \lang_string('settings:gcs:prefix', 'tool_objectfs'),
             new \lang_string('settings:gcs:prefix_help', 'tool_objectfs'),
+            ''
+        ));
+
+        $settings->add(new \admin_setting_configtext(
+            'tool_objectfs/gcs_nopresign_countries',
+            new \lang_string('settings:gcs:nopresigncountries', 'tool_objectfs'),
+            new \lang_string('settings:gcs:nopresigncountries_help', 'tool_objectfs'),
             ''
         ));
 

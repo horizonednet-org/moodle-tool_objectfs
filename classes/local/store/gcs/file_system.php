@@ -149,4 +149,73 @@ class file_system extends object_file_system {
     public function supports_presigned_urls() {
         return true;
     }
+
+    /**
+     * Whether the current HTTP request originates from a country configured to bypass pre-signed URLs.
+     *
+     * Evaluates Cloudflare's HTTP_CF_IPCOUNTRY header in O(1) memory with zero database queries.
+     *
+     * @return bool
+     */
+    public function should_bypass_presigned_for_country(): bool {
+        $client = $this->get_external_client();
+        if (!($client instanceof client)) {
+            return false;
+        }
+
+        $excluded = $client->get_nopresign_countries();
+        if (empty($excluded)) {
+            return false;
+        }
+
+        $country = strtoupper(trim((string)($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '')));
+        if ($country === '') {
+            return false;
+        }
+
+        return in_array($country, $excluded, true);
+    }
+
+    /**
+     * Skip pre-signed URL redirects when the requester is in an excluded country (e.g., CN).
+     *
+     * @param object $file
+     * @param array $headers
+     * @return bool
+     */
+    public function presigned_url_should_redirect_file($file, array $headers = []) {
+        if ($this->should_bypass_presigned_for_country()) {
+            return false;
+        }
+        return parent::presigned_url_should_redirect_file($file, $headers);
+    }
+
+    /**
+     * Skip pre-signed URL redirects by hash when the requester is in an excluded country.
+     *
+     * @param string $contenthash
+     * @param array $headers
+     * @return bool
+     */
+    public function presigned_url_should_redirect($contenthash, $headers = []) {
+        if ($this->should_bypass_presigned_for_country()) {
+            return false;
+        }
+        return parent::presigned_url_should_redirect($contenthash, $headers);
+    }
+
+    /**
+     * Ensure country-conditional 303 redirects are never edge-cached publicly by Cloudflare.
+     *
+     * @param string $contenthash
+     * @param array $headers
+     * @return bool
+     */
+    public function redirect_to_presigned_url($contenthash, $headers = []) {
+        $client = $this->get_external_client();
+        if ($client instanceof client && !empty($client->get_nopresign_countries()) && !headers_sent()) {
+            header('Cache-Control: private');
+        }
+        return parent::redirect_to_presigned_url($contenthash, $headers);
+    }
 }
